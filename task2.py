@@ -86,4 +86,4 @@ if __name__ == '__main__':
 
     for index, value in ANIMALS_ALPHABETICAL.items():
         if re.match(r'[А-Я]', index):  # hotfix пиявки 'Helobdella nununununojensis'
-            print(index, len(value))
+            print(f'{index}:  {len(value)}')
