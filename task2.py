@@ -1,3 +1,5 @@
+# Автор: Вячеслав Кравченко
+
 import requests
 import sys
 import re

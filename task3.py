@@ -1,23 +1,24 @@
-def appearance(intervals):
+# Автор: Вячеслав Кравченко
 
+def appearance(intervals):
+    # созадем структуру интервалов [[timestamp, timestamp], [timestamp, timestamp], ...]
     intervals['pupil'] = make_intervals(intervals['pupil'])
     intervals['tutor'] = make_intervals(intervals['tutor'])
 
+    # подгоняем все интервалы в наборе под рамки урока (урезаем первый и последний таймстамп в интервале)
     intervals['pupil'] = adjust_intervals_to_lesson(intervals['pupil'], intervals['lesson'][0], intervals['lesson'][1])
     intervals['tutor'] = adjust_intervals_to_lesson(intervals['tutor'], intervals['lesson'][0], intervals['lesson'][1])
 
-    intervals['tutor'] = sorted(intervals['tutor'], key=lambda interval: interval[0])
-    intervals['pupil'] = sorted(intervals['pupil'], key=lambda interval: interval[0])
+    # выравниваем timeline
+    intervals['pupil'] = fix_timeline(intervals['pupil'])
+    intervals['tutor'] = fix_timeline(intervals['tutor'])
 
-    print("pupil->", intervals['pupil'])
-    print("tutor->", intervals['tutor'])
+    # находим пересечения времени у pupil и tutor
     interceptions = find_interceptions(intervals['pupil'], intervals['tutor'])
-    # interceptions = sorted(interceptions, key=lambda interval: interval[0])
-    print('sorted interceptions ', interceptions)
-    interceptions = fix_interceptions(interceptions)
-    print('interceptions ', interceptions)
+
+    # получаем сумму разниц интервалов
     result = sum(get_interval_delta(interval) for interval in interceptions)
-    print(result)
+
     return result
 
 
@@ -43,98 +44,126 @@ def adjust_intervals_to_lesson(intervals: list, start: int, end: int) -> list:
     :return: Отредактированный массив интервалов
     """
     # Подгонка интервалов к началу занятия
+    intervals_ = []
     for interval in intervals:
         time = interval[0]
-        if time < start:  # проверяем начало интервала
+        if time < start:  # проверяем начало интервала ко времени старта урока
             if interval[1] < start:  # проверяем конец этого интервала
-                del interval
-                continue  # если оба условия совпали, то удаляем интервал целиком и сразу идем за следующим интервалом
-            print(f"увеличиваем {time} до {start}")
+                continue  # и сразу идем за следующим, если весь интервал не попадает в урок
             interval[0] = start  # увеличиваем интервал до start
-
+        intervals_.append(interval)
     # Подгонка интервалов к концу занятия
-    for interval in intervals:
+    intervals__ = []
+    for interval in intervals_:
         time = interval[1]
         if time > end:  # проверяем конец интервала
             if interval[0] > end:  # проверяем конец этого интервала
-                print("исключили интервал целиком!!!")
-                del interval
-                return intervals
-            print(f"уменьшаем {time} до {end}")
+                continue  #
             interval[1] = end  # уменьшаем интервал до start
-    return intervals
+        intervals__.append(interval)
+    return intervals__
 
 
 def find_interceptions(intervals_1: list, intervals_2: list) -> list:
+    """
+    Находим пересечения двух списков с интервалами, и возвращаем список с пересечениями
+    :param intervals_1: Список с интервалами 1
+    :param intervals_2: Список с интервалами 2
+    :return: Список с интервалами (пересечения)
+    """
     interceptions = []
     # проход по всем интервалам в списках интервалов
     for interval_i in intervals_1:
-        # interval_i = [intervals_1[i], intervals_1[i + 1]]  # интервал - это начало и конец (нечетный индекс и четный)
-
         for interval_j in intervals_2:
-            # interval_j = [intervals_2[j], intervals_2[j + 1]]
-            print("--->", interval_i, interval_j)
-
-            # Условие пересечения интервалов:
-            if ((interval_j[0] <= interval_i[0] <= interval_j[1]) or
-                    (interval_j[0] <= interval_i[1] <= interval_j[1]) or
-                    (interval_i[0] <= interval_j[0] and interval_i[1] >= interval_j[1]) or
-                    (interval_i[0] >= interval_j[0] and interval_i[1] <= interval_j[1])):
-                interceptions.append([
-                    max([interval_i[0], interval_j[0]]), min([interval_i[1], interval_j[1]])
-                ])
-
+            # При пересечении интервалов, выделяем пересечение и добавляем в результат
+            if check_interception(interval_i, interval_j):
+                interceptions.append(intercept_intervals(interval_i, interval_j))
     return interceptions
 
 
-def fix_interceptions(intervals: list) -> list:
+def check_interception(interval_1: list, interval_2: list) -> bool:
     """
-    Принимаем на вход массив с интервалами, отдаем новый массив, где интервалы не пересекаются между собой
-    :param intervals: Массив с интервалами
-    :return: Массив с интервалами без пересечений
+    Проверяем пересекаются ли два интервала
+    :param interval_1: Интервал_№1
+    :param interval_2: Интервал_№2
+    :return: bool
     """
-    new_intervals = []
-    another_try = False
-    skip = False
+    value = (
+             (interval_2[0] <= interval_1[0] <= interval_2[1]) or
+             (interval_2[0] <= interval_1[1] <= interval_2[1]) or
+             (interval_1[0] <= interval_2[0] and interval_1[1] >= interval_2[1]) or
+             (interval_1[0] >= interval_2[0] and interval_1[1] <= interval_2[1])
+             )
+    return value
 
-    for i in range(len(intervals) - 1):
-        if skip:
-            skip = False
-            continue
-        if intervals[i][1] > intervals[i + 1][0]:
-            print("SWAPPIN", i)
-            new_intervals.append([
-                min([intervals[i][0], intervals[i + 1][0]]),
-                max([intervals[i][1], intervals[i + 1][1]])
-            ])
-            another_try = True
-            skip = True
-        else:
-            new_intervals.append(intervals[i])
 
-    print("NEW---->", new_intervals)
+def unite_intervals(interval_1: list, interval_2: list) -> list:
+    """
+    Конкатенация интервалов. Передавать только пересекающиеся интервалы (!)
+    :param interval_1: Интервал 1
+    :param interval_2: Интервал 2
+    :return: Интервал ("Склееный" интервал)
+    """
+    return [min([interval_1[0], interval_2[0]]), max([interval_1[1], interval_2[1]])]
 
-    if another_try:
-        fix_interceptions(new_intervals)
-    else:
-        new_intervals.append(intervals[-1])
-    return new_intervals
+
+def intercept_intervals(interval_1: list, interval_2: list) -> list:
+    """
+    Выделение пересечения интервалов. Передавать только пересекающиеся интервалы (!)
+    :param interval_1: Интервал 1
+    :param interval_2: Интервал 2
+    :return: Интервал (Пересечение интервалов)
+    """
+    return [max([interval_1[0], interval_2[0]]), min([interval_1[1], interval_2[1]])]
 
 
 def get_interval_delta(interval: list) -> int:
-    delta = interval[1] - interval[0]
-    print(delta)
-    return delta
+    """
+    Подсчитываем разницу между концом и началом интервала
+    :param interval: Интервал
+    :return: Дельта между концом и началом интервала
+    """
+    return interval[1] - interval[0]
+
+
+def fix_timeline(intervals: list, index = 0):
+    """
+    Получаем пересекающийся список интервалов,
+    возвращаем непересекающийся таймлайн из всех интервалов
+    :param intervals: Список из интервалов
+    :param index: Нужно для рекурсии, что бы проверить все элементы из списка.
+    :return: Таймлайн (Список интервалов упорядоченный и непересекающийся)
+    """
+
+    current_interval = intervals.pop(index)  # Этот интервал будем сверять с остальными
+    unites = []  # список объединенных интервалов
+    rest = []  # все, что не попало в список unities
+
+    # сравниваем интервалы и наполняем списки unities и rest
+    for interval in intervals:
+        if check_interception(current_interval, interval):
+            unity = unite_intervals(current_interval, interval)
+            if unity not in unites:
+                unites.append(unity)
+        elif interval:
+            rest.append(interval)
+
+    timeline = unites + rest
+    if unites:  # Если есть объединения, то надо проверить весь список еще раз с тем же элементом.
+        timeline = fix_timeline(timeline)
+    else:  # Если их нет, то просто склеиваем список обратно
+        timeline = [current_interval] + rest
+
+    # Идем в рекурсию со следующим элементом, пока не переберем все.
+    index += 1
+    if index < len(timeline):
+        timeline = fix_timeline(timeline, index)
+    return timeline
+
+
 
 
 tests = [
-    # Slava's test data, delete it
-    # {'data': {'lesson': [1594668380, 1594668390],
-    #           'pupil': [1594663340, 1594663389, 1594663390, 1594663395, 1594663396, 1594666472],
-    #           'tutor': [1594663290, 1594663430, 1594663443, 1594666473]},
-    #  'answer': 3117
-    #  },
-
     {'data': {'lesson': [1594663200, 1594666800],
               'pupil': [1594663340, 1594663389, 1594663390, 1594663395, 1594663396, 1594666472],
               'tutor': [1594663290, 1594663430, 1594663443, 1594666473]},
